@@ -13,15 +13,6 @@ public class AlphabetFactory {
 		return alphabet;
 	}
 
-	/** Create a dummy label alphabet with <code>n</code> dimensions */
-	public static LabelAlphabet labelAlphabetOfSize (int n) {
-		LabelAlphabet alphabet = new LabelAlphabet();
-		for (int i = 0; i < n; i++) {
-			alphabet.lookupIndex("d" + i);
-		}
-		return alphabet;
-	}
-
 	/** Load an alphabet from a file, one item per line */
 	public static Alphabet loadFromFile(File alphabetFile) throws IOException {
 		BufferedReader reader = new BufferedReader(new FileReader(alphabetFile));

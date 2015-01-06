@@ -1,55 +1,48 @@
 package types;
 
 import java.util.*;
-
 import java.io.*;
 
 public class Corpus implements Serializable {
 	private static final long serialVersionUID = 1L;
 	
-	public static Alphabet vocabulary = new Alphabet();
+	public static Alphabet wordAlphabet = new Alphabet();
 	public static Alphabet citationAlphabet = new Alphabet();
-	public static Alphabet docNameAlphabet = new Alphabet(); // save doc name
+	public static Alphabet docNameAlphabet = new Alphabet();
 
-	public Vector<Document> docs;
+	public Vector<IDocument> docs;
 	public int numDocs = 0;
-	public int numUniqueWords;
-	public int numUniqueCitations;
 	
 	public int maxDocLen = 0;
 	
 	public Corpus() {
 	}
 	
-	public void addDoc(Document doc) {
+	public void addDoc(IDocument doc) {
 		if (docs == null) {
-			docs = new Vector<Document>();
+			docs = new Vector<IDocument>();
 		}
-		int index = docNameAlphabet.lookupIndex(doc.getDocName());
+		
+		int index = docNameAlphabet.lookupIndex(doc.getDocName(), true);
 		if(docs.size() == index) {
 			doc.setDocID(index);
 			docs.add(doc);
 		} else{
-			docs.set(index, doc);
-			System.out.println("Doc name: " + doc.getDocName() + " has been changed");
+			throw new RuntimeException("Doc name(" + doc.getDocName() + ") has been already added!");
 		}
 		
-		numDocs = docs.size();
-		numUniqueWords = vocabulary.size();
-		numUniqueCitations = citationAlphabet.size();
+		numDocs++;
 		
-		if(doc.numWords > maxDocLen) maxDocLen = doc.numWords;
+		if(doc.docLen > maxDocLen) maxDocLen = doc.docLen;
 	}
 	
-	
-	public void addDocs(Vector<Document> documents) {
-		for(Document doc: documents) {
+	public void addDocs(Vector<IDocument> documents) {
+		for(IDocument doc: documents) {
 			addDoc(doc);
 		}
 	}
 	
-	
-	public Document getDoc(int index) {
+	public IDocument getDoc(int index) {
 		if (docs.size() <= index) {
 			throw new IllegalArgumentException("Doc id exceed corpus size!");
 		}
@@ -57,8 +50,7 @@ public class Corpus implements Serializable {
 		return docs.get(index);
 	}
 	
-	
-	public Document getDoc(String docName) {
+	public IDocument getDoc(String docName) {
 		int index = docNameAlphabet.lookupIndex(docName, false);
 		if(index == -1) {
 			return null;
@@ -66,24 +58,27 @@ public class Corpus implements Serializable {
 		
 		return docs.get(index);
 	}
-	
-	
+		
 	public void stopGrowth(){
 		docNameAlphabet.stopGrowth();
-		vocabulary.stopGrowth();
+		wordAlphabet.stopGrowth();
 		citationAlphabet.stopGrowth();
+	}
+	
+	public boolean isStopGrowth(){
+		return wordAlphabet.isGrowthStopped() || citationAlphabet.isGrowthStopped() 
+				|| docNameAlphabet.isGrowthStopped();
 	}
 	
 	public void writeObject(ObjectOutputStream out) throws IOException {
 		out.writeLong(serialVersionUID);
 		
-		out.writeObject(vocabulary);
+		out.writeObject(wordAlphabet);
 		out.writeObject(citationAlphabet);
 		out.writeObject(docNameAlphabet);
 		
 		out.writeInt(numDocs);
-		out.writeInt(numUniqueWords);
-		out.write(numUniqueCitations);
+		out.writeInt(maxDocLen);
 		
 		for (int i = 0; i < numDocs; i++)
 		    out.writeObject(docs.get(i));
@@ -93,18 +88,16 @@ public class Corpus implements Serializable {
 		Long version = in.readLong();
 		if(version < serialVersionUID) throw new RuntimeException("Serial version is out of date");
 		
-		vocabulary = (Alphabet) in.readObject();
+		wordAlphabet = (Alphabet) in.readObject();
 		citationAlphabet = (Alphabet) in.readObject();
 		docNameAlphabet = (Alphabet) in.readObject();
 		
 		numDocs = in.readInt();
-		numUniqueWords = in.readInt();
-		numUniqueCitations = in.readInt();
+		maxDocLen = in.readInt();
 		
-		docs = new Vector<Document>();
-	
-		 for (int i = 0; i < numDocs; i++)
-			 docs.add((Document) in.readObject());
+		docs = new Vector<IDocument>();
+		for (int i = 0; i < numDocs; i++)
+			docs.add((IDocument) in.readObject());
    }
 
 }

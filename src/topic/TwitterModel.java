@@ -25,7 +25,7 @@ import utils.FileUtil;
 import utils.Randoms;
 import gnu.trove.TIntIntHashMap;
 
-public class Model implements Serializable {
+public class TwitterModel implements Serializable {
 	private static final long serialVersionUID = 1L;
 	public Corpus corpus = null;
 	public Alphabet wordAlphabet = null;
@@ -42,8 +42,10 @@ public class Model implements Serializable {
 	public double alphaSum;
 	public double beta;
 	public double betaSum;
+	public double betaB;
 	public double gamma;
 	public double gammaSum;
+	
 
 	public TIntIntHashMap[] wordTopicCounts;
 	public TIntIntHashMap[] citationTopicCounts;
@@ -762,12 +764,12 @@ public class Model implements Serializable {
 		}
 	}
 
-	public static Model read(File f) throws Exception {
+	public static TwitterModel read(File f) throws Exception {
 
-		Model topicModel = null;
+		TwitterModel topicModel = null;
 
 		ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-		topicModel = (Model) ois.readObject();
+		topicModel = (TwitterModel) ois.readObject();
 		ois.close();
 
 		return topicModel;

@@ -1,25 +1,21 @@
 package topic;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.ObjectOutputStream;
-import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Formatter;
-import java.util.Iterator;
-import java.util.Locale;
 import java.util.TreeSet;
 
-import types.AlphabetFactory;
+import experiments.TagRecommendation;
 import types.Corpus;
 import types.Document;
 import types.IDSorter;
+import utils.FileUtil;
 
 
 public class TagDescriptionLDA extends Model{
@@ -46,7 +42,8 @@ public class TagDescriptionLDA extends Model{
 				words = items[1];
 
 				Document doc = new Document();
-				doc.addContent(uid, -1, words.split("\\s"));
+				doc.setDocName(uid);
+				doc.addWords(words.split("\\s+"), Corpus.wordAlphabet);
 
 				corpus.addDoc(doc);
 			}
@@ -74,163 +71,81 @@ public class TagDescriptionLDA extends Model{
 
 				if (Corpus.docNameAlphabet.contains(uid)) {
 					docID = Corpus.docNameAlphabet.lookupIndex(uid);
-					corpus.getDoc(docID).addCitations(uid, -1, citations.split(" "));
+					((Document)corpus.getDoc(docID)).addCitations(citations.split("\\s"), Corpus.citationAlphabet);
 				}
 			}
 			
-			corpus.numUniqueCitations = Corpus.citationAlphabet.size();
 		} finally {
 			citationBR.close();
 		}
 
 		System.out.println("Total Documents:" + corpus.numDocs);
-		System.out.println("Total Word Size:" + corpus.numUniqueWords);
-		System.out.println("Total Citation Size:" + corpus.numUniqueCitations);
+		System.out.println("Total Word Size:" + Corpus.wordAlphabet.size());
+		System.out.println("Total Citation Size:" + Corpus.citationAlphabet.size());
 		return corpus;
 	}
 	
 	public static void main(String[] args) throws IOException {
 		//String rootDir = "D:\\twitter\\Twitter network\\tagLDA\\";
-		String rootDir = "/home/hewei/tag/";
+		String base = System.getProperty("user.dir") + "/data/";
+		String name = "tagDesLDA";
 		
-		String contentDir = rootDir + "normal_user_tweets_filter";
-		String citationDir = rootDir + "normal_user_celebrities_tokens";
+		String outputDir = base + "/" + name + "/";
+		String modelParas = base + "/modelParameters";
+		
+		// create output folder
+		FileUtil.mkdir(new File(outputDir));
+		
+		String contentDataFile = base + "/train_user_tweets";
+		String citationDataFile = base + "/train_user_follows_tokens";
 
 		int iterations = 1000;
-		String output = rootDir + "tagDescLDA_result_iter_" + iterations +".txt";
-		String modelDir = rootDir + "tagDesLDA.model." + iterations;
+		String output = outputDir + "res." + name + "." + iterations +".txt";
+		String modelDir = outputDir + name + "." + iterations + ".model";
 		
-		TagDescriptionLDA tagLDA = new TagDescriptionLDA();
+		TagDescriptionLDA tagDesLDA = new TagDescriptionLDA();
 		System.out.println("Reading Data.....");
-		Corpus corpus = tagLDA.readData(contentDir, citationDir, 5000);
+		Corpus corpus = tagDesLDA.readData(contentDataFile, citationDataFile, 5000);
 		System.out.println("Done");
 		
-		tagLDA.numTopics = 100;
-		tagLDA.InitializeParameters(corpus, tagLDA.numTopics);
-		tagLDA.InitializeAssignments(corpus, AlphabetFactory.labelAlphabetOfSize(tagLDA.numTopics));
-		tagLDA.sampleCorpus(corpus, iterations);
-		tagLDA.estimateParameters(corpus);
+		tagDesLDA.numTopics = 100;
+		tagDesLDA.addCorpus(corpus);
+		tagDesLDA.InitializeParameters(modelParas, tagDesLDA.numTopics);
+		tagDesLDA.InitializeAssignments();
+		
+		tagDesLDA.numIterations = iterations;
+		tagDesLDA.estimate();
 		
 		System.out.println("save model");
-		tagLDA.writeObject(new ObjectOutputStream(new FileOutputStream(new File(modelDir))));
+		tagDesLDA.write(new File(modelDir));
+		
+		PrintWriter out = new PrintWriter(new FileWriter(output, true));
 		int topN = 40;
 		
-		ArrayList<TreeSet<IDSorter>> topicSortedWords = tagLDA.getSortedWords(corpus, topN);
-		System.out.println("================================");
-		Formatter out = new Formatter(new StringBuilder(), Locale.US);
-		BufferedWriter bw1 = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(new File(output))));
-		
 		System.out.println("# Topic_word");
-		bw1.write("# Topic_word");
-		bw1.newLine();
-		for (int topic = 0; topic < tagLDA.numTopics; topic++) {
-			Iterator<IDSorter> iterator = topicSortedWords.get(topic)
-					.iterator();
-
-			out = new Formatter(new StringBuilder(), Locale.US);
-			out.format("%d\t", topic);
-			int rank = 0;
-			while (iterator.hasNext() && rank < 20) {
-				IDSorter idCountPair = iterator.next();
-				out.format("%s (%.4f) ",
-						Corpus.vocabulary.lookupObject(idCountPair.getID()),
-						idCountPair.getWeight());
-				rank++;
-			}
-			//System.out.println(out);
-			String line = out.toString();
-			bw1.write(line);
-			bw1.newLine();
-		}
+		out.println("# Topic_word");
+		tagDesLDA.printTopWords(out, topN, false);
 		
 		System.out.println("# Topic_citation");
-		ArrayList<TreeSet<IDSorter>> topicSortedCitation = tagLDA.getSortedCitations(corpus, topN);
-		bw1.write("# Topic_citation");
-		bw1.newLine();
-		for (int topic = 0; topic < tagLDA.numTopics; topic++) {
-			Iterator<IDSorter> iterator = topicSortedCitation.get(topic)
-					.iterator();
-
-			out = new Formatter(new StringBuilder(), Locale.US);
-			out.format("%d\t", topic);
-			int rank = 0;
-			while (iterator.hasNext() && rank < 20) {
-				IDSorter idCountPair = iterator.next();
-				out.format("%s (%.4f) ",
-						Corpus.citationAlphabet.lookupObject(idCountPair.getID()),
-						idCountPair.getWeight());
-				rank++;
-			}
-			//System.out.println(out);
-			String line = out.toString();
-			bw1.write(line);
-			bw1.newLine();
-		}
+		out.println("# Topic_word");
+		tagDesLDA.printTopCitations(out, topN, false);
 		
-		System.out.println("# rec_word");
-		ArrayList<TreeSet<IDSorter>> recDocWords = tagLDA.recommendWordIG(topN);
-		bw1.write("# rec_word");
-		bw1.newLine();
-		for (int m = 0; m < tagLDA.numDocs; m++) {
-			Iterator<IDSorter> iterator = recDocWords.get(m).iterator();
-
-			out = new Formatter(new StringBuilder(), Locale.US);
-			out.format("%s\t", Corpus.docNameAlphabet.lookupObject(m));
-			while (iterator.hasNext()) {
-				IDSorter idCountPair = iterator.next();
-				out.format("%s (%.4f) ",
-						Corpus.vocabulary.lookupObject(idCountPair.getID()),
-						idCountPair.getWeight());
-			}
-			String line = out.toString();
-			bw1.write(line);
-			bw1.newLine();
-		}
+		System.out.println("# rec_word by IG, prob sum, prob max");
+		ArrayList<TreeSet<IDSorter>> recWordsIG = TagRecommendation.recWordByIG(tagDesLDA, 40);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.wordAlphabet, recWordsIG, modelDir + ".rec.word.IG");
+		ArrayList<TreeSet<IDSorter>> recWordsProbSum = TagRecommendation.recWordByProb(tagDesLDA, 40, true);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.wordAlphabet, recWordsProbSum, modelDir + ".rec.word.prob.sum");
+		ArrayList<TreeSet<IDSorter>> recWordsProbMax = TagRecommendation.recWordByProb(tagDesLDA, 40, false);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.wordAlphabet, recWordsProbMax, modelDir + ".rec.word.prob.max");
 		
-		System.out.println("# rec_citation");
-		ArrayList<TreeSet<IDSorter>> recDocCitations = tagLDA.recommendCitationIG(topN);
-		bw1.write("# rec_citation");
-		bw1.newLine();
-		for (int m = 0; m < tagLDA.numDocs; m++) {
-			Iterator<IDSorter> iterator = recDocCitations.get(m).iterator();
-
-			out = new Formatter(new StringBuilder(), Locale.US);
-			out.format("%s\t", Corpus.docNameAlphabet.lookupObject(m));
-			while (iterator.hasNext()) {
-				IDSorter idCountPair = iterator.next();
-				out.format("%s (%.4f) ",
-						Corpus.citationAlphabet.lookupObject(idCountPair.getID()),
-						idCountPair.getWeight());
-			}
-			String line = out.toString();
-			bw1.write(line);
-			bw1.newLine();
-		}
+		System.out.println("# rec_citation by IG, prob sum, prob max");
+		ArrayList<TreeSet<IDSorter>> recCitationsIG = TagRecommendation.recCitationByIG(tagDesLDA, 40);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.citationAlphabet, recCitationsIG, modelDir + ".rec.citation.IG");
+		ArrayList<TreeSet<IDSorter>> recCitationssProbSum = TagRecommendation.recWordByProb(tagDesLDA, 40, true);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.citationAlphabet, recCitationssProbSum, modelDir + ".rec.citation.prob.sum");
+		ArrayList<TreeSet<IDSorter>> recCitationsProbMax = TagRecommendation.recWordByProb(tagDesLDA, 40, false);
+		TagRecommendation.printRecResult(tagDesLDA, tagDesLDA.citationAlphabet, recCitationsProbMax, modelDir + ".rec.citation.prob.max");
 		
-		/*System.out.println("# Doc_Topic");
-		bw1.write("# Doc_Topic");
-		bw1.newLine();
-		for (int i = 0; i < tagLDA.numDocs; i++) {
-			out = new Formatter(new StringBuilder(), Locale.US);
-
-			out.format("%s\t", Corpus.docNameAlphabet.lookupObject(i));
-			double max = 0.0;
-			int assign = -1;
-			for (int topic = 0; topic < tagLDA.numTopics; topic++) {
-				if (tagLDA.theta_train[i][topic] > max) {
-					max = tagLDA.theta_train[i][topic];
-					assign = topic;
-				}
-				out.format("%.4f\t", tagLDA.theta_train[i][topic]);
-			}
-			out.format("%d\t%.4f", assign, max);
-
-			String line = out.toString();
-			//System.out.println(line);
-			bw1.write(line);
-			bw1.newLine();
-		}*/
-		
-		bw1.close();
+		out.close();
 	}
 }
