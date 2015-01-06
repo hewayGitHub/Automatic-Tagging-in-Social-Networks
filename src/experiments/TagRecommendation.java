@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.TreeSet;
 
 import topic.Model;
@@ -47,7 +48,8 @@ public class TagRecommendation {
 
 		// Collect counts
 		int wordCount = 0;
-		for (int word = 0; word < model.numUniqueWords; word++) {
+		//Set<Integer> wordSet = model.getTopWordSet(topN * 5);
+		for(int word = 0; word < model.numUniqueWords; word++) {
 			double pDocWord = 0;
 			for (int k = 0; k < model.numTopics; k++) {
 				pDocWord += topicVector[k] * model.phi_train[k][word];
@@ -97,7 +99,9 @@ public class TagRecommendation {
 
 		// Collect counts
 		int wordCount = 0;
-		for (int word = 0; word < model.numUniqueWords; word++) {
+		//Set<Integer> wordSet = model.getTopWordSet(topN * 5);
+		//for(int word: wordSet) {
+		for(int word = 0; word < model.numUniqueWords; word++) {
 			double prob = 0;
 			for (int k = 0; k < model.numTopics; k++) {
 				if(isSumNotMax)
@@ -153,7 +157,9 @@ public class TagRecommendation {
 
 		// Collect counts
 		int citationCount = 0;
-		for (int citation = 0; citation < model.numUniqueCitations; citation++) {
+		//Set<Integer> citationSet = model.getTopCitationsSet(topN * 5);
+		//for(int citation: citationSet) {
+		for(int citation = 0; citation < model.numUniqueCitations; citation++) {
 			double pDocCitation = 0;
 			for (int k = 0; k < model.numTopics; k++) {
 				pDocCitation += topicVector[k] * model.psi_train[k][citation];
@@ -203,7 +209,9 @@ public class TagRecommendation {
 
 		// Collect counts
 		int citationCount = 0;
-		for (int citation = 0; citation < model.numUniqueCitations; citation++) {
+		//Set<Integer> citationSet = model.getTopCitationsSet(topN * 5);
+		//for(int citation: citationSet) {
+		for(int citation = 0; citation < model.numUniqueCitations; citation++) {
 			double prob = 0;
 			for (int k = 0; k < model.numTopics; k++) {
 				if(isSumNotMax)
@@ -254,9 +262,10 @@ public class TagRecommendation {
 	}
 	
 	public static void main(String[] args) throws Exception {
-		String modelDir = "D:\\twitter\\Twitter network\\tagLDA\\tagDesLDA.model.1000";
+		//String modelDir = "data/StandardLDA/StandardLDA.model1";
+		String modelDir = args[0];
 		Model model = readModel(modelDir);
-		ArrayList<TreeSet<IDSorter>> recWords = recWordByIG(model, 40);
+		ArrayList<TreeSet<IDSorter>> recWords = recWordByIG(model, 20);
 		printRecResult(model, model.wordAlphabet, recWords, modelDir + ".rec.word");
 	}
 

@@ -1,8 +1,10 @@
 package topic;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -19,13 +21,13 @@ import java.util.TreeSet;
 import types.Alphabet;
 import types.Corpus;
 import types.Dirichlet;
-import types.Document;
+import types.User;
 import types.IDSorter;
 import utils.FileUtil;
 import utils.Randoms;
 import gnu.trove.TIntIntHashMap;
 
-public class TwitterModel implements Serializable {
+public class TwitterModel extends Model implements Serializable {
 	private static final long serialVersionUID = 1L;
 	public Corpus corpus = null;
 	public Alphabet wordAlphabet = null;
@@ -43,21 +45,27 @@ public class TwitterModel implements Serializable {
 	public double beta;
 	public double betaSum;
 	public double betaB;
+	public double betaBSum;
 	public double gamma;
 	public double gammaSum;
+	public double[] delta;
+	public double deltaSum;
 	
-
+	//background topic is wordsPerTopics[numTopics]
 	public TIntIntHashMap[] wordTopicCounts;
 	public TIntIntHashMap[] citationTopicCounts;
 	public TIntIntHashMap[] docTopicCounts;
-	public int[] wordsPerTopic;
+	public int[] wordsPerTopic; 
 	public int[] citationsPerTopic;
-	public int[][] wordTopicAssignments;
+	public int[][] tweetTopicAssignments; //doc tweet
 	public int[][] citationTopicAssignments;
-
+	public boolean[][][] isWordBackground; //doc sentence word
+	public double[] levelCount;
+	
 	public double[][] theta_train;
 	public double[][] phi_train;
 	public double[][] psi_train;
+	public double[] rho_train;
 
 	public int numIterations;
 	public int burninPeriod;
@@ -69,8 +77,9 @@ public class TwitterModel implements Serializable {
 	public int[] docLengthCounts;
 	public int[][] topicDocCounts;
 	
+	public boolean hasBackGround = false;
 	public enum ModelParas {
-		numTopics, alpha, beta, gamma, numIterations, burninPeriod, printLogLikelihood;
+		numTopics, alpha, beta, betaB, gamma, delta, numIterations, burninPeriod, printLogLikelihood, hasBackGround;
 	}
 
 	private void setModelPara(String paraFile) {
@@ -78,11 +87,9 @@ public class TwitterModel implements Serializable {
 		FileUtil.readLines(paraFile, inputlines);
 		for (int i = 0; i < inputlines.size(); i++) {
 			int index = inputlines.get(i).indexOf(":");
-			String para = inputlines.get(i).substring(0, index).trim()
-					.toLowerCase();
+			String para = inputlines.get(i).substring(0, index).trim();
 			String value = inputlines.get(i)
-					.substring(index + 1, inputlines.get(i).length()).trim()
-					.toLowerCase();
+					.substring(index + 1, inputlines.get(i).length()).trim();
 			switch (ModelParas.valueOf(para)) {
 			case numTopics:
 				numTopics = Integer.parseInt(value);
@@ -93,8 +100,14 @@ public class TwitterModel implements Serializable {
 			case beta:
 				beta = Double.parseDouble(value);
 				break;
+			case betaB:
+				betaB = Double.parseDouble(value);
+				break;
 			case gamma:
 				gamma = Double.parseDouble(value);
+				break;
+			case delta:
+				Arrays.fill(delta, Double.parseDouble(value));
 				break;
 			case numIterations:
 				numIterations = Integer.parseInt(value);
@@ -104,6 +117,9 @@ public class TwitterModel implements Serializable {
 				break;
 			case printLogLikelihood:
 				printLogLikelihood = Boolean.parseBoolean(value);
+				break;
+			case hasBackGround:
+				hasBackGround = Boolean.parseBoolean(value);
 				break;
 			default:
 				break;
@@ -129,13 +145,19 @@ public class TwitterModel implements Serializable {
 		this.numTopics = numTopics;
 
 		alpha = new double[numTopics];
+		delta = new double[2];
 		setModelPara(paraFile);
 		alphaSum = 0;
 		for (int i = 0; i < numTopics; i++) {
 			alphaSum += alpha[i];
 		}
 		betaSum = beta * numUniqueWords;
+		betaBSum = betaB * numUniqueWords;
 		gammaSum = gamma * numUniqueCitations;
+		deltaSum = 0;
+		for (int i = 0; i < delta.length; i++) {
+			deltaSum += delta[i];
+		}
 
 		wordTopicCounts = new TIntIntHashMap[numUniqueWords];
 		for (int w = 0; w < numUniqueWords; w++)
@@ -149,43 +171,63 @@ public class TwitterModel implements Serializable {
 		for (int d = 0; d < numDocs; d++)
 			docTopicCounts[d] = new TIntIntHashMap();
 
-		wordsPerTopic = new int[numTopics];
-		citationsPerTopic = new int[numTopics];
-
-		wordTopicAssignments = new int[numDocs][];
+		wordsPerTopic = new int[numTopics+1];
+		citationsPerTopic = new int[numTopics+1];
+		
+		tweetTopicAssignments = new int[numDocs][];
+		isWordBackground = new boolean[numDocs][][];
 		for (int d = 0; d < numDocs; d++) {
-			Document doc = (Document) corpus.getDoc(d);
-			wordTopicAssignments[d] = new int[doc.numWords];
+			User doc = (User) corpus.getDoc(d);
+			tweetTopicAssignments[d] = new int[doc.numTweets];
+			isWordBackground[d] = new boolean[doc.numTweets][];
+			for(int t = 0; t < doc.numTweets; t++)
+				isWordBackground[d][t] = new boolean[doc.wordSequence[t].length];
 		}
 
 		citationTopicAssignments = new int[numDocs][];
 		for (int d = 0; d < numDocs; d++) {
-			Document doc = (Document) corpus.getDoc(d);
+			User doc = (User) corpus.getDoc(d);
 			citationTopicAssignments[d] = new int[doc.numCitations];
 		}
-
+		
+		levelCount = new double[2];
+		Arrays.fill(levelCount, 0);
+		
 		theta_train = new double[numDocs][numTopics]; // doc topic vector
-		phi_train = new double[numTopics][numUniqueWords]; // topic-word
+		phi_train = new double[numTopics+1][numUniqueWords]; // topic-word
 															// distribution
-		psi_train = new double[numTopics][numUniqueCitations]; // topic-citation
+		psi_train = new double[numTopics+1][numUniqueCitations]; // topic-citation
 																// distribution
+		rho_train = new double[2];
+		
 	}
 
 	public void InitializeAssignments() {
 		this.random = new Randoms();
 		for (int d = 0; d < numDocs; d++) {
-			Document doc = (Document) corpus.getDoc(d);
+			User doc = (User) corpus.getDoc(d);
 
 			if (doc.numWords != 0) {
-				int[] words = doc.wordSequence;
-				for (int wPos = 0; wPos < words.length; wPos++) {
+				for(int t = 0; t < doc.numTweets; t++){
 					int topic = r.nextInt(numTopics);
-
-					wordTopicAssignments[d][wPos] = topic;
-
+					tweetTopicAssignments[d][t] = topic;
 					docTopicCounts[d].adjustOrPutValue(topic, 1, 1);
-					wordTopicCounts[words[wPos]].adjustOrPutValue(topic, 1, 1);
-					wordsPerTopic[topic]++;
+					
+					int[] words = doc.wordSequence[t];
+					for (int wPos = 0; wPos < words.length; wPos++) {
+						if(!hasBackGround) isWordBackground[d][t][wPos] = false;
+						else isWordBackground[d][t][wPos] = r.nextDouble() > 0.5;
+						
+						if(isWordBackground[d][t][wPos]) {
+							levelCount[0]++;
+							wordTopicCounts[words[wPos]].adjustOrPutValue(numTopics, 1, 1);
+							wordsPerTopic[numTopics]++;
+						} else {
+							levelCount[1]++;
+							wordTopicCounts[words[wPos]].adjustOrPutValue(topic, 1, 1);
+							wordsPerTopic[topic]++;
+						}
+					}
 				}
 			}
 
@@ -203,40 +245,108 @@ public class TwitterModel implements Serializable {
 			}
 		}
 	}
-
-	public void sampleOneDocument(Document doc, int dPos) {
-		if (doc.numWords != 0) {
-			int[] words = doc.wordSequence;
-			int[] topics = wordTopicAssignments[dPos];
+	
+	public int sampleTweet(int dPos, int t, int[] words) {
+		int oldTopic = tweetTopicAssignments[dPos][t];
+		docTopicCounts[dPos].adjustOrPutValue(oldTopic, -1, 0);
+		
+		for (int wPos = 0; wPos < words.length; wPos++) {
+			if(!isWordBackground[dPos][t][wPos]) {
+				wordTopicCounts[words[wPos]].adjustOrPutValue(oldTopic, -1, 0);
+				wordsPerTopic[oldTopic]--;
+			}
+		}	
+		
+		double[] topicDistribution = new double[numTopics];
+		double topicDistributionSum = 0;
+		for (int k = 0; k < numTopics; k++) {
+			double weight = ((docTopicCounts[dPos].get(k) + alpha[k]));
 			for (int wPos = 0; wPos < words.length; wPos++) {
-				docTopicCounts[dPos].adjustOrPutValue(topics[wPos], -1, 0);
-				wordTopicCounts[words[wPos]].adjustOrPutValue(topics[wPos], -1,
-						0);
-				wordsPerTopic[topics[wPos]]--;
-
 				TIntIntHashMap currentWordTopicCounts = wordTopicCounts[words[wPos]];
-				double[] topicDistribution = new double[numTopics];
-				double topicDistributionSum = 0, weight = 0;
-				for (int k = 0; k < numTopics; k++) {
-					/*
-					 * weight = ((currentWordTopicCounts.get(k) + beta) /
-					 * (wordsPerTopic[k] + betaSum))
-					 * ((docTopicCounts[dPos].get(k) + alpha[k]) / (doc.numWords
-					 * + alphaSum));
-					 */
-					weight = ((currentWordTopicCounts.get(k) + beta) / (wordsPerTopic[k] + betaSum))
-							* ((docTopicCounts[dPos].get(k) + alpha[k]));
-					topicDistributionSum += weight;
-					topicDistribution[k] = weight;
-				}
+				
+				weight *= ((currentWordTopicCounts.get(k) + beta) / (wordsPerTopic[k] + betaSum + wPos));
+			}
+			topicDistributionSum += weight;
+			topicDistribution[k] = weight;
+		}
 
-				int newTopic = random.nextDiscrete(topicDistribution,
-						topicDistributionSum);
-
-				wordTopicAssignments[dPos][wPos] = newTopic;
-				docTopicCounts[dPos].adjustOrPutValue(newTopic, 1, 1);
+		int newTopic = random.nextDiscrete(topicDistribution,
+				topicDistributionSum);
+		
+		tweetTopicAssignments[dPos][t] = newTopic;
+		docTopicCounts[dPos].adjustOrPutValue(newTopic, 1, 1);
+		for (int wPos = 0; wPos < words.length; wPos++) {
+			if(!isWordBackground[dPos][t][wPos]) {
 				wordTopicCounts[words[wPos]].adjustOrPutValue(newTopic, 1, 1);
 				wordsPerTopic[newTopic]++;
+			}
+		}
+		
+		return newTopic;
+	}
+	
+	public void sampleWord(int dPos, int t, int wPos, int word, int tweetTopic) {
+		if(isWordBackground[dPos][t][wPos]) {
+			levelCount[0]--;
+			wordTopicCounts[word].adjustOrPutValue(numTopics, -1, 0);
+			wordsPerTopic[numTopics]--;
+		} else {
+			levelCount[1]--;
+			wordTopicCounts[word].adjustOrPutValue(tweetTopic, -1, 0);
+			wordsPerTopic[tweetTopic]--;
+		}
+		
+		double[] P_lv;
+		P_lv = new double[2];
+		double Pb = 1;
+		double Ptopic = 1;
+
+		P_lv[0] = (levelCount[0] + delta[0])
+				/ (levelCount[0] + levelCount[1] + deltaSum); 
+
+		P_lv[1] = (levelCount[1] + delta[1])
+				/ (levelCount[0] + levelCount[1] + deltaSum);
+		
+		Pb = (wordTopicCounts[word].get(numTopics) + betaB)
+				/ (wordsPerTopic[numTopics] + betaBSum); // word in background part(2)
+		Ptopic = (wordTopicCounts[word].get(tweetTopic) + beta)
+				/ (wordsPerTopic[tweetTopic] + betaSum);
+
+		double p0 = Pb * P_lv[0];
+		double p1 = Ptopic * P_lv[1];
+
+		double sum = p0 + p1;
+		double randPick = Math.random();
+
+		if (randPick <= p0 / sum) {
+			isWordBackground[dPos][t][wPos] = false;
+		} else {
+			isWordBackground[dPos][t][wPos] = true;
+		}
+		
+		if(isWordBackground[dPos][t][wPos]) {
+			levelCount[0]++;
+			wordTopicCounts[word].adjustOrPutValue(numTopics, 1, 1);
+			wordsPerTopic[numTopics]++;
+		} else {
+			levelCount[1]++;
+			wordTopicCounts[word].adjustOrPutValue(tweetTopic, 1, 1);
+			wordsPerTopic[tweetTopic]++;
+		}
+	}
+	
+	public void sampleOneDocument(User doc, int dPos) {
+		if (doc.numWords != 0) {
+			for(int t = 0; t < doc.numTweets; t++){
+				int[] words = doc.wordSequence[t];
+				int newTopic = sampleTweet(dPos, t, words);
+				
+				if(hasBackGround) {
+					for(int wPos = 0; wPos < words.length; wPos++) {
+						int word = words[wPos];
+						sampleWord(dPos, t, wPos, word, newTopic);
+					}
+				}
 			}
 		}
 
@@ -279,7 +389,7 @@ public class TwitterModel implements Serializable {
 			long iterationStart = System.currentTimeMillis();
 
 			for (int dPos = 0; dPos < numDocs; dPos++) {
-				sampleOneDocument((Document) corpus.getDoc(dPos), dPos);
+				sampleOneDocument((User) corpus.getDoc(dPos), dPos);
 			}
 
 			long elapsedMillis = System.currentTimeMillis() - iterationStart;
@@ -339,7 +449,7 @@ public class TwitterModel implements Serializable {
 		docLengthCounts = new int[corpus.maxDocLen + 1];
 		topicDocCounts = new int[numTopics][corpus.maxDocLen + 1];
 		for (int d = 0; d < numDocs; d++) {
-			Document doc = (Document) corpus.getDoc(d);
+			User doc = (User) corpus.getDoc(d);
 
 			docLengthCounts[doc.numWords]++;
 
@@ -358,13 +468,13 @@ public class TwitterModel implements Serializable {
 		numSamples++;
 
 		for (int dPos = 0; dPos < numDocs; dPos++) {
-			Document doc = (Document) corpus.getDoc(dPos);
+			User doc = (User) corpus.getDoc(dPos);
 
 			for (int k = 0; k < numTopics; k++) {
 				if (numSamples > 1)
 					theta_train[dPos][k] *= (numSamples - 1);
 				theta_train[dPos][k] += (alpha[k] + docTopicCounts[dPos].get(k)
-						/ (doc.numWords + doc.numCitations + alphaSum));
+						/ (doc.numTweets + doc.numCitations + alphaSum));
 
 				if (numSamples > 1)
 					theta_train[dPos][k] /= numSamples;
@@ -381,6 +491,15 @@ public class TwitterModel implements Serializable {
 					phi_train[k][wPos] /= numSamples;
 			}
 		}
+		
+		for (int wPos = 0; wPos < numUniqueWords; wPos++) {
+			if (numSamples > 1)
+				phi_train[numTopics][wPos] *= (numSamples - 1);
+			phi_train[numTopics][wPos] += ((wordTopicCounts[wPos].get(numTopics) + betaB) / (wordsPerTopic[numTopics] + betaBSum));
+
+			if (numSamples > 1)
+				phi_train[numTopics][wPos] /= numSamples;
+		}
 
 		for (int k = 0; k < numTopics; k++) {
 			for (int cPos = 0; cPos < numUniqueCitations; cPos++) {
@@ -391,6 +510,15 @@ public class TwitterModel implements Serializable {
 				if (numSamples > 1)
 					psi_train[k][cPos] /= (numSamples);
 			}
+		}
+		
+		for (int y = 0; y < 2; y++) {
+			if (numSamples > 1)
+				rho_train[y] *= (numSamples - 1);
+			rho_train[y] += (levelCount[y] + delta[y])
+					/ (levelCount[0] + levelCount[1] + deltaSum);
+			
+			rho_train[y] /= numSamples;
 		}
 	}
 
@@ -420,7 +548,7 @@ public class TwitterModel implements Serializable {
 		}
 
 		for (int dPos = 0; dPos < numDocs; dPos++) {
-			Document doc = (Document) corpus.getDoc(dPos);
+			User doc = (User) corpus.getDoc(dPos);
 			sampleSize += doc.numWords + doc.numCitations;
 
 			for (int topic : docTopicCounts[dPos].keys()) {
@@ -489,14 +617,14 @@ public class TwitterModel implements Serializable {
 				numTopics);
 
 		// Initialize the tree sets
-		for (int topic = 0; topic < numTopics; topic++) {
+		for (int topic = 0; topic <= numTopics; topic++) {
 			topicSortedWords.add(new TreeSet<IDSorter>());
 		}
 
 		// Collect counts
-		int[] wordCount = new int[numTopics];
+		int[] wordCount = new int[numTopics+1];
 		for (int word = 0; word < numUniqueWords; word++) {
-			for (int k = 0; k < numTopics; k++) {
+			for (int k = 0; k <= numTopics; k++) {
 				if (wordCount[k] < topN) {
 					topicSortedWords.get(k).add(
 							new IDSorter(word, phi_train[k][word]));
@@ -592,7 +720,7 @@ public class TwitterModel implements Serializable {
 		ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(topN);
 
 		Formatter out = new Formatter(new StringBuilder(), Locale.US);
-		for (int topic = 0; topic < numTopics; topic++) {
+		for (int topic = 0; topic <= numTopics; topic++) {
 			TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
 
 			if (usingNewLines) {
@@ -674,13 +802,43 @@ public class TwitterModel implements Serializable {
 		return res;
 	}
 	
+	public void outputTweetWithLabel(String output) {
+		BufferedWriter writer = null;
+		FileUtil.mkdir(new File(output + "/label"));
+		
+		try {
+			for (int dPos = 0; dPos < numDocs; dPos++) {
+				User doc = (User) corpus.getDoc(dPos);
+	
+				writer = new BufferedWriter(new FileWriter(new File(output + "/label/"
+						+ doc.docName)));
+				for (int t = 0; t < doc.numTweets; t++) {
+					int[] words = doc.wordSequence[t];
+					String line = "z=" + tweetTopicAssignments[dPos][t] + ":  ";
+					for (int wPos = 0; wPos < words.length; wPos++) {
+						int word = words[wPos];
+						if (isWordBackground[dPos][t][wPos] == false) {
+							line += wordAlphabet.lookupObject(word) + "/" + tweetTopicAssignments[dPos][t] + " ";
+						} else {
+							line += wordAlphabet.lookupObject(word) + "/" + "false" + " ";
+						}
+					}
+					writer.write(line + "\n");
+				}
+				writer.flush();
+				writer.close();
+			}
+		} catch (Exception e){
+			e.printStackTrace();
+		}
+	}
 	
 	public double testPerplexity() {
 		double logSum = 0;
 		int sampleSize = 0;
 
 		for (int dPos = 0; dPos < numDocs; dPos++) {
-			Document doc = (Document) corpus.getDoc(dPos);
+			User doc = (User) corpus.getDoc(dPos);
 			sampleSize += doc.numWords;
 
 			TIntIntHashMap wordCounts = doc.wordCounts;
@@ -713,12 +871,17 @@ public class TwitterModel implements Serializable {
 		out.writeDouble(alphaSum);
 		out.writeDouble(beta);
 		out.writeDouble(betaSum);
+		out.writeDouble(betaB);
+		out.writeDouble(betaBSum);
 		out.writeDouble(gamma);
 		out.writeDouble(gammaSum);
+		out.writeObject(delta);
+		out.writeDouble(deltaSum);
 
 		out.writeObject(theta_train);
 		out.writeObject(phi_train);
 		out.writeObject(psi_train);
+		out.writeObject(rho_train);
 
 		out.writeInt(numSamples);
 	}
@@ -741,13 +904,18 @@ public class TwitterModel implements Serializable {
 		alphaSum = in.readDouble();
 		beta = in.readDouble();
 		betaSum = in.readDouble();
+		betaB = in.readDouble();
+		betaBSum = in.readDouble();
 		gamma = in.readDouble();
 		gammaSum = in.readDouble();
-
+		delta = (double[])in.readObject();
+		deltaSum = in.readDouble();
+		
 		theta_train = (double[][]) in.readObject();
 		phi_train = (double[][]) in.readObject();
 		psi_train = (double[][]) in.readObject();
-
+		rho_train = (double[]) in.readObject();
+		
 		numSamples = in.readInt();
 	}
 

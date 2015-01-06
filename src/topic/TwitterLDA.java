@@ -11,15 +11,15 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.TreeSet;
 
-import types.Corpus;
-import types.Document;
-import types.IDSorter;
-import utils.FileUtil;
 import experiments.TagRecommendation;
+import types.Corpus;
+import types.IDSorter;
+import types.User;
+import utils.FileUtil;
 
-public class TwitterLDA extends Model{
 
-private static final long serialVersionUID = 1L;
+public class TwitterLDA extends TwitterModel{
+	private static final long serialVersionUID = 1L;
 	
 	public Corpus readData(String contentDir, int maxLine)
 			throws IOException, FileNotFoundException {
@@ -41,9 +41,17 @@ private static final long serialVersionUID = 1L;
 				uid = items[0];
 				words = items[1];
 
-				Document doc = new Document();
+				User doc = new User();
 				doc.setDocName(uid);
-				doc.addWords(words.split("\\s+"), Corpus.wordAlphabet);
+				
+				items = words.split("  ");
+				String[][] tweets = new String[items.length][];
+				int index = 0;
+				for(String tweet: items) {
+					tweets[index++] = tweet.split(" ");
+				}
+
+				doc.addWords(tweets, Corpus.wordAlphabet);
 
 				corpus.addDoc(doc);
 			}
@@ -58,9 +66,15 @@ private static final long serialVersionUID = 1L;
 	}
 	
 	public static void main(String[] args) throws IOException {
-		//String rootDir = "D:\\twitter\\Twitter network\\tagLDA\\";
-		String base = System.getProperty("user.dir") + "/data/";
-		String name = "TwitterLDA";
+		//args = new String[]{System.getProperty("user.dir") + "/data/", "true"};
+		String base = args[0];
+		
+		String name;
+		if(args[1] == "true") {
+			name = "TwitterLDA";
+		} else {
+			name = "TwitterLDANoBG";
+		}
 		
 		String outputDir = base + "/" + name + "/";
 		String modelParas = base + "/modelParameters";
@@ -69,10 +83,6 @@ private static final long serialVersionUID = 1L;
 		FileUtil.mkdir(new File(outputDir));
 		
 		String contentDataFile = base + "/train_user_tweets";
-
-		int iterations = 1000;
-		String output = outputDir + "res." + name + "." + iterations +".txt";
-		String modelDir = outputDir + name + "." + iterations + ".model";
 		
 		TwitterLDA lda = new TwitterLDA();
 		System.out.println("Reading Data.....");
@@ -84,13 +94,14 @@ private static final long serialVersionUID = 1L;
 		lda.InitializeParameters(modelParas, lda.numTopics);
 		lda.InitializeAssignments();
 		
-		lda.numIterations = iterations;
 		lda.estimate();
 		
+		String output = outputDir + "res." + name + "." + lda.numIterations +".txt";
+		String modelDir = outputDir + name + ".model." + lda.numIterations;
 		System.out.println("save model");
 		lda.write(new File(modelDir));
 		
-		PrintWriter out = new PrintWriter(new FileWriter(output, true));
+		PrintWriter out = new PrintWriter(new FileWriter(output));
 		int topN = 40;
 		
 		System.out.println("# Topic_word");
@@ -98,8 +109,13 @@ private static final long serialVersionUID = 1L;
 		lda.printTopWords(out, topN, false);
 		
 		System.out.println("# Topic_citation");
-		out.println("# Topic_word");
+		out.println("# Topic_citation");
 		lda.printTopCitations(out, topN, false);
+		
+		out.close();
+		
+		System.out.println("# Text with label");
+		lda.outputTweetWithLabel(outputDir);
 		
 		System.out.println("# rec_word by IG, prob sum, prob max");
 		ArrayList<TreeSet<IDSorter>> recWordsIG = TagRecommendation.recWordByIG(lda, 40);
@@ -108,7 +124,5 @@ private static final long serialVersionUID = 1L;
 		TagRecommendation.printRecResult(lda, lda.wordAlphabet, recWordsProbSum, modelDir + ".rec.word.prob.sum");
 		ArrayList<TreeSet<IDSorter>> recWordsProbMax = TagRecommendation.recWordByProb(lda, 40, false);
 		TagRecommendation.printRecResult(lda, lda.wordAlphabet, recWordsProbMax, modelDir + ".rec.word.prob.max");
-		
-		out.close();
 	}
 }

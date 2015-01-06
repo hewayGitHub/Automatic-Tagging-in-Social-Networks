@@ -86,8 +86,8 @@ public class TagLDA extends Model{
 	}
 	
 	public static void main(String[] args) throws IOException {
-		//String rootDir = "D:\\twitter\\Twitter network\\tagLDA\\";
-		String base = System.getProperty("user.dir") + "/data/";
+		//args = new String[]{"TagLDA", System.getProperty("user.dir") + "/data/"};
+		String base = args[1];
 		String name = "tagLDA";
 		
 		String outputDir = base + "/" + name + "/";
@@ -97,12 +97,8 @@ public class TagLDA extends Model{
 		FileUtil.mkdir(new File(outputDir));
 		
 		String contentDataFile = base + "/train_user_tweets";
-		String citationDataFile = base + "/train_user_follows";
+		String citationDataFile = base + "/train_user_celebrities";
 
-		int iterations = 1000;
-		String output = outputDir + "res." + name + "." + iterations +".txt";
-		String modelDir = outputDir + name + "." + iterations + ".model";
-		
 		TagLDA tagLDA = new TagLDA();
 		System.out.println("Reading Data.....");
 		Corpus corpus = tagLDA.readData(contentDataFile, citationDataFile, 5000);
@@ -112,10 +108,11 @@ public class TagLDA extends Model{
 		tagLDA.addCorpus(corpus);
 		tagLDA.InitializeParameters(modelParas, tagLDA.numTopics);
 		tagLDA.InitializeAssignments();
-		
-		tagLDA.numIterations = iterations;
+
 		tagLDA.estimate();
 		
+		String output = outputDir + "res." + name + "." + tagLDA.numIterations +".txt";
+		String modelDir = outputDir + name + ".model." + tagLDA.numIterations;
 		System.out.println("save model");
 		tagLDA.write(new File(modelDir));
 		
@@ -127,7 +124,7 @@ public class TagLDA extends Model{
 		tagLDA.printTopWords(out, topN, false);
 		
 		System.out.println("# Topic_citation");
-		out.println("# Topic_word");
+		out.println("# Topic_citation");
 		tagLDA.printTopCitations(out, topN, false);
 		
 		System.out.println("# rec_word by IG, prob sum, prob max");

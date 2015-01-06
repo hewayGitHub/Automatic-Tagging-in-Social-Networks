@@ -11,9 +11,11 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Formatter;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Locale;
 import java.util.Random;
+import java.util.Set;
 import java.util.TreeSet;
 
 import types.Alphabet;
@@ -68,7 +70,7 @@ public class Model implements Serializable {
 	public int[][] topicDocCounts;
 	
 	public enum ModelParas {
-		numTopics, alpha, beta, gamma, numIterations, burninPeriod, printLogLikelihood;
+		numTopics, alpha, beta, betaB, delta, gamma, numIterations, burninPeriod, printLogLikelihood;
 	}
 
 	private void setModelPara(String paraFile) {
@@ -76,11 +78,9 @@ public class Model implements Serializable {
 		FileUtil.readLines(paraFile, inputlines);
 		for (int i = 0; i < inputlines.size(); i++) {
 			int index = inputlines.get(i).indexOf(":");
-			String para = inputlines.get(i).substring(0, index).trim()
-					.toLowerCase();
+			String para = inputlines.get(i).substring(0, index).trim();
 			String value = inputlines.get(i)
-					.substring(index + 1, inputlines.get(i).length()).trim()
-					.toLowerCase();
+					.substring(index + 1, inputlines.get(i).length()).trim();
 			switch (ModelParas.valueOf(para)) {
 			case numTopics:
 				numTopics = Integer.parseInt(value);
@@ -273,7 +273,7 @@ public class Model implements Serializable {
 		long startTime = System.currentTimeMillis();
 
 		for (int iteration = 1; iteration <= numIterations; iteration++) {
-			System.out.println("Iteration " + iteration + "start...");
+			System.out.println("Iteration " + iteration + " start...");
 			long iterationStart = System.currentTimeMillis();
 
 			for (int dPos = 0; dPos < numDocs; dPos++) {
@@ -581,9 +581,52 @@ public class Model implements Serializable {
 
 		return result;
 	}
+	
+	public Set<Integer> getTopWordSet(int topN) {
+		ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(topN);
+		Set<Integer> result = new HashSet<Integer>();
+
+		for (int topic = 0; topic < numTopics; topic++) {
+			TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+
+			// How many words should we report? Some topics may have fewer than
+			// the default number of words with non-zero weight.
+			int limit = topN;
+			if (sortedWords.size() < topN) {
+				limit = sortedWords.size();
+			}
+
+			Iterator<IDSorter> iterator = sortedWords.iterator();
+			for (int i = 0; i < limit; i++) {
+				IDSorter info = iterator.next();
+				result.add(info.getID());
+			}
+		}
+
+		return result;
+	}
 
 	public void printTopWords(PrintWriter out, int topN, boolean usingNewLines) {
-		out.print(displayTopWords(topN, usingNewLines));
+		ArrayList<TreeSet<IDSorter>> topicSortedWords = getSortedWords(topN);
+
+		for (int topic = 0; topic < numTopics; topic++) {
+			TreeSet<IDSorter> sortedWords = topicSortedWords.get(topic);
+
+			if (usingNewLines) {
+				out.format("#%d:\n", topic);
+				for(IDSorter info: sortedWords) {
+					out.format("\t%s (%.5f)\n", wordAlphabet.lookupObject(info.getID()), info.getWeight());
+				}
+			} else {
+				out.format("#%d:\t", topic);
+
+				for(IDSorter info: sortedWords) {
+					out.format("%s (%.5f) ", wordAlphabet.lookupObject(info.getID()),
+							info.getWeight());
+				}
+				out.format("\n");
+			}
+		}
 	}
 	
 	public String displayTopWords(int topN, boolean usingNewLines) {
@@ -639,9 +682,52 @@ public class Model implements Serializable {
 
 		return result;
 	}
+	
+	public Set<Integer> getTopCitationsSet(int topN) {
+		ArrayList<TreeSet<IDSorter>> topicSortedCitations = getSortedCitations(topN);
+		Set<Integer> result = new HashSet<Integer>();
 
+		for (int topic = 0; topic < numTopics; topic++) {
+			TreeSet<IDSorter> sortedCitations = topicSortedCitations.get(topic);
+
+			// How many words should we report? Some topics may have fewer than
+			// the default number of words with non-zero weight.
+			int limit = topN;
+			if (sortedCitations.size() < topN) {
+				limit = sortedCitations.size();
+			}
+
+			Iterator<IDSorter> iterator = sortedCitations.iterator();
+			for (int i = 0; i < limit; i++) {
+				IDSorter info = iterator.next();
+				result.add(info.getID());
+			}
+		}
+
+		return result;
+	}
+	
 	public void printTopCitations(PrintWriter out, int topN, boolean usingNewLines) {
-		out.print(displayTopCitations(topN, usingNewLines));
+		ArrayList<TreeSet<IDSorter>> topicSortedCitations = getSortedCitations(topN);
+
+		for (int topic = 0; topic < numTopics; topic++) {
+			TreeSet<IDSorter> sortedCitations = topicSortedCitations.get(topic);
+
+			if (usingNewLines) {
+				out.format("#%d:\n", topic);
+				for(IDSorter info: sortedCitations) {
+					out.format("\t%s (%.5f)\n", citationAlphabet.lookupObject(info.getID()), info.getWeight());
+				}
+			} else {
+				out.format("#%d:\t", topic);
+
+				for(IDSorter info: sortedCitations) {
+					out.format("%s (%.5f) ", citationAlphabet.lookupObject(info.getID()),
+							info.getWeight());
+				}
+				out.format("\n");
+			}
+		}
 	}
 	
 	public String displayTopCitations(int topN, boolean usingNewLines) {
@@ -704,6 +790,7 @@ public class Model implements Serializable {
 		out.writeObject(docNameAlphabet);
 
 		out.writeInt(numTopics);
+		out.writeInt(numDocs);
 		out.writeInt(numUniqueWords);
 		out.writeInt(numUniqueCitations);
 
@@ -732,6 +819,7 @@ public class Model implements Serializable {
 		docNameAlphabet = (Alphabet) in.readObject();
 
 		numTopics = in.readInt();
+		numDocs = in.readInt();
 		numUniqueWords = in.readInt();
 		numUniqueCitations = in.readInt();
 

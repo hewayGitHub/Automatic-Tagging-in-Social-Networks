@@ -58,8 +58,9 @@ public class StandardLDA extends Model{
 	}
 	
 	public static void main(String[] args) throws IOException {
-		//String rootDir = "D:\\twitter\\Twitter network\\tagLDA\\";
-		String base = System.getProperty("user.dir") + "/data/";
+		//args = new String[]{System.getProperty("user.dir") + "/data/"};
+		String base = args[1];
+		
 		String name = "StandardLDA";
 		
 		String outputDir = base + "/" + name + "/";
@@ -69,10 +70,6 @@ public class StandardLDA extends Model{
 		FileUtil.mkdir(new File(outputDir));
 		
 		String contentDataFile = base + "/train_user_tweets";
-
-		int iterations = 1000;
-		String output = outputDir + "res." + name + "." + iterations +".txt";
-		String modelDir = outputDir + name + "." + iterations + ".model";
 		
 		StandardLDA lda = new StandardLDA();
 		System.out.println("Reading Data.....");
@@ -84,9 +81,10 @@ public class StandardLDA extends Model{
 		lda.InitializeParameters(modelParas, lda.numTopics);
 		lda.InitializeAssignments();
 		
-		lda.numIterations = iterations;
 		lda.estimate();
 		
+		String output = outputDir + "res." + name + "." + lda.numIterations +".txt";
+		String modelDir = outputDir + name + ".model." + lda.numIterations;
 		System.out.println("save model");
 		lda.write(new File(modelDir));
 		
@@ -98,7 +96,7 @@ public class StandardLDA extends Model{
 		lda.printTopWords(out, topN, false);
 		
 		System.out.println("# Topic_citation");
-		out.println("# Topic_word");
+		out.println("# Topic_citation");
 		lda.printTopCitations(out, topN, false);
 		
 		System.out.println("# rec_word by IG, prob sum, prob max");
