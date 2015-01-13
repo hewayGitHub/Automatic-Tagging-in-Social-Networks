@@ -66,7 +66,7 @@ public class TwitterLDA extends TwitterModel{
 	}
 	
 	public static void main(String[] args) throws IOException {
-		//args = new String[]{System.getProperty("user.dir") + "/data/", "true"};
+		args = new String[]{System.getProperty("user.dir") + "/data/", "false"};
 		String base = args[0];
 		
 		String name;

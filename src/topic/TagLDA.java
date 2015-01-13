@@ -21,69 +21,7 @@ import utils.FileUtil;
 public class TagLDA extends Model{
 	private static final long serialVersionUID = 1L;
 	
-	public Corpus readData(String contentDir, String citationDir, int maxLine)
-			throws IOException, FileNotFoundException {
-		Corpus corpus = new Corpus();
-
-		BufferedReader contentBR = null;
-		try {
-			contentBR = new BufferedReader(new InputStreamReader(new FileInputStream(new File(contentDir)), "UTF-8"));
-
-			String line = null, items[], uid, words;
-			int lineCount = 0;
-			while ((line = contentBR.readLine()) != null) {
-				if(lineCount++ > maxLine) break;
-				items = line.split("\\t");
-
-				if (items.length != 2)
-					continue;
-
-				uid = items[0];
-				words = items[1];
-
-				Document doc = new Document();
-				doc.setDocName(uid);
-				doc.addWords(words.split("\\s+"), Corpus.wordAlphabet);
-
-				corpus.addDoc(doc);
-			}
-		} finally {
-			contentBR.close();
-		}
-
-		BufferedReader citationBR = null;
-		try {
-			citationBR = new BufferedReader(new InputStreamReader(
-					new FileInputStream(new File(citationDir)), "UTF-8"));
-
-			String line = null, items[], uid, citations;
-			int docID;
-			int lineCount = 0;
-			while ((line = citationBR.readLine()) != null) {
-				if(lineCount++ > maxLine) break;
-				items = line.split("\\t");
-
-				if (items.length != 2)
-					continue;
-
-				uid = items[0];
-				citations = items[1];
-
-				if (Corpus.docNameAlphabet.contains(uid)) {
-					docID = Corpus.docNameAlphabet.lookupIndex(uid);
-					((Document)corpus.getDoc(docID)).addCitations(citations.split("\\s"), Corpus.citationAlphabet);
-				}
-			}
-			
-		} finally {
-			citationBR.close();
-		}
-
-		System.out.println("Total Documents:" + corpus.numDocs);
-		System.out.println("Total Word Size:" + Corpus.wordAlphabet.size());
-		System.out.println("Total Citation Size:" + Corpus.citationAlphabet.size());
-		return corpus;
-	}
+	
 	
 	public static void main(String[] args) throws IOException {
 		//args = new String[]{"TagLDA", System.getProperty("user.dir") + "/data/"};
