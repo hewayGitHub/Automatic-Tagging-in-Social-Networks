@@ -27,7 +27,7 @@ import utils.FileUtil;
 import utils.Randoms;
 import gnu.trove.TIntIntHashMap;
 
-public class TwitterModel extends Model implements Serializable {
+public class TwitterModel extends Estimator implements Serializable {
 	private static final long serialVersionUID = 1L;
 	public Corpus corpus = null;
 	public Alphabet wordAlphabet = null;
@@ -79,7 +79,8 @@ public class TwitterModel extends Model implements Serializable {
 	
 	public boolean hasBackGround = false;
 	public enum ModelParas {
-		numTopics, alpha, beta, betaB, gamma, delta, numIterations, burninPeriod, printLogLikelihood, hasBackGround;
+		numTopics, alpha, beta, betaB, gamma, delta, numIterations, 
+		burninPeriod, printLogLikelihood, hasBackGround;
 	}
 
 	private void setModelPara(String paraFile) {
@@ -127,7 +128,7 @@ public class TwitterModel extends Model implements Serializable {
 		}
 	}
 
-	public void addCorpus(Corpus corpus) {
+	public void setCorpus(Corpus corpus) {
 		this.corpus = corpus;
 		numDocs = Corpus.docNameAlphabet.size();
 		numUniqueWords = Corpus.wordAlphabet.size();

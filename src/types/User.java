@@ -3,70 +3,84 @@ package types;
 import gnu.trove.*;
 
 import java.io.*;
+import java.util.Arrays;
 
 public class User extends IDocument {
 	private static final long serialVersionUID = 1;
 	
 	public int numTweets = 0;
-	public int numWords = 0;
-	public int numCitations = 0;
 	
 	public int[][] wordSequence = null; //sentence word
 	public int[] citationSequence = null;
 	
-	public TIntIntHashMap wordCounts = null; 
-	public TIntIntHashMap citationCounts = null;
-	
 	public User() {
 	}
 	
-	public void addWords(String[][] tweets, Alphabet wordAlphabet) {
+	public void addWords(String[] tweets, Alphabet wordAlphabet, boolean addIfNotPresent) {
 		if(tweets == null || tweets.length == 0) {
 			throw new IllegalArgumentException("Words cannot be empty");
 		}
-
-		numTweets = tweets.length;
-		wordSequence = new int[numTweets][];
+		
+		if(numWords != 0) {
+			throw new RuntimeException("addWords() has been called more than once for one document.");
+		}
+		
+		wordSequence = new int[tweets.length][];
 		wordCounts = new TIntIntHashMap();
-		for(int t = 0; t < numTweets; t++) {
-			String[] words = tweets[t];
-			numWords += words.length;
+		for(int t = 0; t < tweets.length; t++) {
+			String[] words = tweets[t].split(" ");
 			
-			wordSequence[t] = new int[words.length];
+			int[] tempTweet = new int[words.length];
+			int tempNumWords = 0;
 			for(int pos = 0; pos < words.length; pos++){
-				int index = wordAlphabet.lookupIndex(words[pos], true);
-				wordSequence[t][pos] = index;
-				wordCounts.adjustOrPutValue(index, 1, 1);
+				if(OrdinaryWord.isOrdinaryWord(words[pos])) continue;
+				
+				int index = wordAlphabet.lookupIndex(words[pos], addIfNotPresent);
+				
+				if(index != -1) {
+					tempTweet[tempNumWords++] = index;
+					wordCounts.adjustOrPutValue(index, 1, 1);
+				}
+			}
+			
+			if(tempNumWords != 0) {
+				numWords += tempNumWords;
+				
+				if(tempNumWords != words.length) tempTweet = Arrays.copyOf(tempTweet, tempNumWords);
+				wordSequence[numTweets++] = tempTweet;
 			}
 		}
+		
 		docLen += numWords;
+		if(numTweets != tweets.length) {
+			wordSequence = Arrays.copyOf(wordSequence, numTweets);
+		}
 	}
 	
-	public void addCitations(String[] citations, Alphabet citationAlphabet) {
+	public void addCitations(String[] citations, Alphabet citationAlphabet, boolean addIfNotPresent) {
 		if(citations == null || citations.length == 0) {
 			throw new IllegalArgumentException("Citations cannot be empty");
 		}
 		
-		numCitations = citations.length;
-		docLen += numCitations;
+		if(numCitations != 0) {
+			throw new RuntimeException("addCitations() has been called more than once for one document.");
+		}
 		
-		citationSequence = new int[numCitations];
+		citationSequence = new int[citations.length];
 		citationCounts = new TIntIntHashMap();
 		
 		for(int pos = 0; pos < citations.length; pos++){
-			int index = citationAlphabet.lookupIndex(citations[pos], true);
-			citationSequence[pos] = index;
-			citationCounts.adjustOrPutValue(index, 1, 1);
-		}
-	}
-
-	public void addContent(String[][] tweets, String[] citations, Alphabet wordAlphabet, Alphabet citationAlphabet) {
-		if(tweets != null && tweets.length != 0) {
-			addWords(tweets, wordAlphabet);
+			int index = citationAlphabet.lookupIndex(citations[pos], addIfNotPresent);
+			
+			if(index != -1) {
+				citationSequence[numCitations++] = index;
+				citationCounts.adjustOrPutValue(index, 1, 1);
+			}
 		}
 		
-		if(citations != null && citations.length != 0) {
-			addCitations(citations, citationAlphabet);
+		docLen += numCitations;
+		if(numCitations != citations.length) {
+			citationSequence = Arrays.copyOf(citationSequence, numCitations);
 		}
 	}
 	

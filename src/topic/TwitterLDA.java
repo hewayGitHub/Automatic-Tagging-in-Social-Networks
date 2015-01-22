@@ -90,7 +90,7 @@ public class TwitterLDA extends TwitterModel{
 		System.out.println("Done");
 		
 		lda.numTopics = 100;
-		lda.addCorpus(corpus);
+		lda.setCorpus(corpus);
 		lda.InitializeParameters(modelParas, lda.numTopics);
 		lda.InitializeAssignments();
 		

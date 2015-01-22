@@ -3,65 +3,70 @@ package types;
 import gnu.trove.*;
 
 import java.io.*;
+import java.util.Arrays;
 
 public class Document extends IDocument {
 	private static final long serialVersionUID = 1;
 	
-	public int numWords = 0;
-	public int numCitations = 0;
-	
 	public int[] wordSequence = null; 
 	public int[] citationSequence = null;
-	
-	public TIntIntHashMap wordCounts = null; 
-	public TIntIntHashMap citationCounts = null;
 	
 	public Document() {
 	}
 	
-	public void addWords(String[] words, Alphabet wordAlphabet) {
+	public void addWords(String[] words, Alphabet wordAlphabet, boolean addIfNotPresent) {
 		if(words == null || words.length == 0) {
 			throw new IllegalArgumentException("Words cannot be empty");
 		}
-
-		numWords = words.length;
-		docLen += numWords;
 		
-		wordSequence = new int[numWords];
+		if(numWords != 0) {
+			throw new RuntimeException("addWords() has been called more than once for one document.");
+		}
+		
+		wordSequence = new int[words.length];
 		wordCounts = new TIntIntHashMap();
 		
 		for(int pos = 0; pos < words.length; pos++){
-			int index = wordAlphabet.lookupIndex(words[pos], true);
-			wordSequence[pos] = index;
-			wordCounts.adjustOrPutValue(index, 1, 1);
+			if(OrdinaryWord.isOrdinaryWord(words[pos])) continue;
+			
+			int index = wordAlphabet.lookupIndex(words[pos], addIfNotPresent);
+			
+			if(index != -1) {
+				wordSequence[numWords++] = index;
+				wordCounts.adjustOrPutValue(index, 1, 1);
+			}
+		}
+		
+		docLen += numWords;
+		if(numWords != words.length) {
+			wordSequence = Arrays.copyOf(wordSequence, numWords);
 		}
 	}
 	
-	public void addCitations(String[] citations, Alphabet citationAlphabet) {
+	public void addCitations(String[] citations, Alphabet citationAlphabet, boolean addIfNotPresent) {
 		if(citations == null || citations.length == 0) {
 			throw new IllegalArgumentException("Citations cannot be empty");
 		}
 		
-		numCitations = citations.length;
-		docLen += numCitations;
+		if(numCitations != 0) {
+			throw new RuntimeException("addCitations() has been called more than once for one document.");
+		}
 		
-		citationSequence = new int[numCitations];
+		citationSequence = new int[citations.length];
 		citationCounts = new TIntIntHashMap();
 		
 		for(int pos = 0; pos < citations.length; pos++){
-			int index = citationAlphabet.lookupIndex(citations[pos], true);
-			citationSequence[pos] = index;
-			citationCounts.adjustOrPutValue(index, 1, 1);
-		}
-	}
-
-	public void addContent(String[] words, String[] citations, Alphabet wordAlphabet, Alphabet citationAlphabet) {
-		if(words != null && words.length != 0) {
-			addWords(words, wordAlphabet);
+			int index = citationAlphabet.lookupIndex(citations[pos], addIfNotPresent);
+			
+			if(index != -1) {
+				citationSequence[numCitations++] = index;
+				citationCounts.adjustOrPutValue(index, 1, 1);
+			}
 		}
 		
-		if(citations != null && citations.length != 0) {
-			addCitations(citations, citationAlphabet);
+		docLen += numCitations;
+		if(numCitations != citations.length) {
+			citationSequence = Arrays.copyOf(citationSequence, numCitations);
 		}
 	}
 	
@@ -101,5 +106,4 @@ public class Document extends IDocument {
 		wordCounts = (TIntIntHashMap) in.readObject();
 		citationCounts = (TIntIntHashMap) in.readObject();
 	}
-
 }

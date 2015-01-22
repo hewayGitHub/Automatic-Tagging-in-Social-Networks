@@ -10,33 +10,32 @@ public class Corpus implements Serializable {
 	public static Alphabet citationAlphabet = new Alphabet();
 	public static Alphabet docNameAlphabet = new Alphabet();
 
-	public Vector<IDocument> docs;
+	public List<IDocument> docs;
 	public int numDocs = 0;
 	
 	public int maxDocLen = 0;
 	
 	public Corpus() {
 	}
-	
+
 	public void addDoc(IDocument doc) {
 		if (docs == null) {
-			docs = new Vector<IDocument>();
+			docs = new ArrayList<IDocument>();
 		}
 		
 		int index = docNameAlphabet.lookupIndex(doc.getDocName(), true);
 		if(docs.size() == index) {
 			doc.setDocID(index);
 			docs.add(doc);
+			numDocs++;
 		} else{
 			throw new RuntimeException("Doc name(" + doc.getDocName() + ") has been already added!");
 		}
 		
-		numDocs++;
-		
 		if(doc.docLen > maxDocLen) maxDocLen = doc.docLen;
 	}
 	
-	public void addDocs(Vector<IDocument> documents) {
+	public void addDocs(List<IDocument> documents) {
 		for(IDocument doc: documents) {
 			addDoc(doc);
 		}
@@ -44,7 +43,7 @@ public class Corpus implements Serializable {
 	
 	public IDocument getDoc(int index) {
 		if (docs.size() <= index) {
-			throw new IllegalArgumentException("Doc id exceed corpus size!");
+			throw new IllegalArgumentException("Doc index exceed corpus size!");
 		}
 		
 		return docs.get(index);
@@ -60,30 +59,38 @@ public class Corpus implements Serializable {
 	}
 		
 	public void stopGrowth(){
-		docNameAlphabet.stopGrowth();
+		//docNameAlphabet.stopGrowth();
 		wordAlphabet.stopGrowth();
 		citationAlphabet.stopGrowth();
 	}
 	
 	public boolean isStopGrowth(){
-		return wordAlphabet.isGrowthStopped() || citationAlphabet.isGrowthStopped() 
-				|| docNameAlphabet.isGrowthStopped();
+		return wordAlphabet.isGrowthStopped() || citationAlphabet.isGrowthStopped();
 	}
 	
-	public static Corpus readData(String contentDir, int maxLine, String delimeter)
-			throws IOException, FileNotFoundException {
+	/**
+	 * Line should be (a doc's unique name)(firstDelimeter)(words seperated by secondDelimeter)
+	 * 
+	 * @param wordFile
+	 * @param maxLine
+	 * @param firstDelimeter
+	 * @param secondDelimeter
+	 * @return
+	 */
+	public static Corpus readData(Class<? extends IDocument> docClass, String wordFile, int maxLine, 
+			String firstDelimeter, String secondDelimeter, boolean addIfNotPresent){
 		Corpus corpus = new Corpus();
 
 		BufferedReader contentBR = null;
 		try {
 			contentBR = new BufferedReader(new InputStreamReader(
-					new FileInputStream(new File(contentDir)), "UTF-8"));
+					new FileInputStream(new File(wordFile)), "UTF-8"));
 
 			String line = null, items[], uid, words;
 			int lineCount = 0;
 			while ((line = contentBR.readLine()) != null) {
-				if(lineCount++ > maxLine) break;
-				items = line.split("\\t");
+				if(lineCount++ >= maxLine) break;
+				items = line.split(firstDelimeter);
 
 				if (items.length != 2)
 					continue;
@@ -91,51 +98,21 @@ public class Corpus implements Serializable {
 				uid = items[0];
 				words = items[1];
 
-				Document doc = new Document();
+				IDocument doc = docClass.newInstance();
 				doc.setDocName(uid);
-				doc.addWords(words.split(delimeter), Corpus.wordAlphabet);
-
-				corpus.addDoc(doc);
-			}
-		} finally {
-			contentBR.close();
-		}
-
-		System.out.println("Total Documents:" + corpus.numDocs);
-		System.out.println("Total Word Size:" + Corpus.wordAlphabet.size());
-		System.out.println("Total Citation Size:" + Corpus.citationAlphabet.size());
-		return corpus;
-	}
-	
-	public Corpus readData(String contentDir, String citationDir, int maxLine, String delimeter){
-		Corpus corpus = new Corpus();
-
-		BufferedReader contentBR = null;
-		try {
-			contentBR = new BufferedReader(new InputStreamReader(
-					new FileInputStream(new File(contentDir)), "UTF-8"));
-
-			String line = null, items[], uid, words;
-			int lineCount = 0;
-			while ((line = contentBR.readLine()) != null) {
-				if(lineCount++ > maxLine) break;
-				items = line.split("\\t");
-
-				if (items.length != 2)
-					continue;
-
-				uid = items[0];
-				words = items[1];
-
-				Document doc = new Document();
-				doc.setDocName(uid);
-				doc.addWords(words.split(delimeter), Corpus.wordAlphabet);
-
-				corpus.addDoc(doc);
+				doc.addWords(words.split(secondDelimeter), Corpus.wordAlphabet, addIfNotPresent);
+				
+				if(doc.numWords != 0) corpus.addDoc(doc);
 			}
 		} catch(IOException e){
 			e.printStackTrace();
 			System.exit(-1);
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+			System.exit(-1);
+		} catch (IllegalAccessException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		} finally {
 			if(contentBR != null) {
 				try {
@@ -146,17 +123,42 @@ public class Corpus implements Serializable {
 			}
 		}
 
+		System.out.println("Total Documents:" + corpus.numDocs);
+		System.out.println("Total Word Size:" + Corpus.wordAlphabet.size());
+		System.out.println("Total Citation Size:" + Corpus.citationAlphabet.size());
+		return corpus;
+	}
+	
+	/**
+	 * Line should be (a doc's unique name)(firstDelimeter)(words seperated by secondDelimeter)
+	 * The same with citations.
+	 * Docs with only citations will be ignored.
+	 * 
+	 * @param wordFile
+	 * @param citationFile
+	 * @param maxLine
+	 * @param firstDelimeter
+	 * @param secondDelimeter
+	 * @param addIfNotPresent
+	 * @return
+	 */
+	public static Corpus readData(Class<? extends IDocument> docClass, String wordFile, String citationFile, int maxLine, 
+			String firstDelimeter, String secondDelimeter, boolean addIfNotPresent){
+		Corpus corpus = new Corpus();
+
+		Corpus.readData(docClass, wordFile, maxLine, firstDelimeter, secondDelimeter, addIfNotPresent);
+
 		BufferedReader citationBR = null;
 		try {
 			citationBR = new BufferedReader(new InputStreamReader(
-					new FileInputStream(new File(citationDir)), "UTF-8"));
+					new FileInputStream(new File(citationFile)), "UTF-8"));
 
 			String line = null, items[], uid, citations;
 			int docID;
 			int lineCount = 0;
 			while ((line = citationBR.readLine()) != null) {
-				if(lineCount++ > maxLine) break;
-				items = line.split("\\t");
+				if(lineCount++ >= maxLine) break;
+				items = line.split(firstDelimeter);
 
 				if (items.length != 2)
 					continue;
@@ -166,7 +168,8 @@ public class Corpus implements Serializable {
 
 				if (Corpus.docNameAlphabet.contains(uid)) {
 					docID = Corpus.docNameAlphabet.lookupIndex(uid);
-					((Document)corpus.getDoc(docID)).addCitations(citations.split(delimeter), Corpus.citationAlphabet);
+					corpus.getDoc(docID).addCitations(
+							citations.split(secondDelimeter), Corpus.citationAlphabet, addIfNotPresent);
 				}
 			}
 			
@@ -190,6 +193,57 @@ public class Corpus implements Serializable {
 		return corpus;
 	}
 	
+	public static Corpus readConditionData(Class<? extends IDocument> docClass, String wordFile, int maxLine, 
+			String firstDelimeter, String secondDelimeter, boolean addIfNotPresent, Set<Integer> lineNos){
+		Corpus corpus = new Corpus();
+
+		BufferedReader contentBR = null;
+		try {
+			contentBR = new BufferedReader(new InputStreamReader(
+					new FileInputStream(new File(wordFile)), "UTF-8"));
+
+			String line = null, items[], uid, words;
+			int lineCount = 0;
+			while ((line = contentBR.readLine()) != null) {
+				if(!lineNos.contains(lineCount) || lineCount++ >= maxLine) break;
+				items = line.split(firstDelimeter);
+
+				if (items.length != 2)
+					continue;
+
+				uid = items[0];
+				words = items[1];
+
+				IDocument doc = docClass.newInstance();
+				doc.setDocName(uid);
+				doc.addWords(words.split(secondDelimeter), Corpus.wordAlphabet, addIfNotPresent);
+				
+				if(doc.numWords != 0) corpus.addDoc(doc);
+			}
+		} catch(IOException e){
+			e.printStackTrace();
+			System.exit(-1);
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+			System.exit(-1);
+		} catch (IllegalAccessException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} finally {
+			if(contentBR != null) {
+				try {
+					contentBR.close();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+
+		System.out.println("Total Documents:" + corpus.numDocs);
+		System.out.println("Total Word Size:" + Corpus.wordAlphabet.size());
+		System.out.println("Total Citation Size:" + Corpus.citationAlphabet.size());
+		return corpus;
+	}
 	
 	public void writeObject(ObjectOutputStream out) throws IOException {
 		out.writeLong(serialVersionUID);

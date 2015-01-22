@@ -1,178 +1,125 @@
 package experiments;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.*;
 
-import gnu.trove.*;
-
-import edu.psu.topic.Model;
-import edu.psu.types.*;
-import edu.psu.util.*;
+import topic.Estimator;
+import topic.LDA;
+import topic.Model;
+import types.Corpus;
+import utils.FileUtil;
 
 
 public class Perplexity {
-
-	/**
-	 * @param args
-	 */
-	public void sampleCorpus(Corpus corpus, int numtopics, int iterations,
-			int modelType, int numFolds, int K, String output, boolean ifAdaptive) {
-		Model model = null;
-		boolean isContextAware = false;
-		if (modelType % 2 == 1) {
-			isContextAware = true;
+	public HashMap<Integer, ArrayList<Integer>> getNFolds(int numFolds, int sum) {
+		HashMap<Integer, ArrayList<Integer>> nFolds = new HashMap<Integer, ArrayList<Integer>>();
+		
+		int[] entries = new int[sum];
+		for (int i = 0; i < sum; i++) {
+			entries[i] = i;
 		}
-		switch (modelType) {
-		case 0:
-			model = Model.factory("linklda");
-			break;
-		case 1:
-			model = Model.factory("citelda");
-			break;
-		case 2:
-			model = Model.factory("linkplsalda");
-			break;
-		case 3:
-			model = Model.factory("citeplsalda");
-			break;
-		default:
-			System.out.println("Enter number between 0-3");
-			System.exit(0);
-
+		
+		// shuffle array
+		Random r = new Random(21);
+		for (int i = 0; i < sum; i++) {
+			int rand = r.nextInt(entries.length - i) + i;
+			int temp = entries[i];
+			entries[i] = entries[rand];
+			entries[rand] = temp;
 		}
-		model.numTopics = numtopics;
-		corpus.prepareSplits(numFolds, true);
-		model.InitializeParameters(corpus);
-		double avg_perp = 0;
-
-		for (int fold = 0; fold < numFolds; fold++) {
-			model.numSamples = 0;
-			corpus.docs = corpus.train_docs.get(fold);
-			model.InitializeAssignments(corpus, new LabelAlphabet());
-			for (int iter = 0; iter < iterations; iter++) {
-				int sampleSize = 0;
-				model.sampleCorpus(corpus, iter, isContextAware);
-				if (iter > 5 && iter < 15 && iter % 2 == 0 && ifAdaptive
-						&& fold == 0)
-					corpus.adaptiveWindowLength(fold);
-				
-				System.out.print("<" + iter + ">, ");
-				// model.estimateParameters(corpus);
-				if(iter>5 && iter%2==0)
-					model.learnParameters(corpus);
-				// System.out.println("Loglikelihood="
-				// + empiricalLikelihood(10, corpus));
-			}
-			corpus.docs = corpus.test_docs.get(fold);
-			corpus.isPerplex = true;
-			model.InitializeAssignments(corpus, new LabelAlphabet());
-			double perp_report = Double.MAX_VALUE;
-
-			for (int iter = iterations; iter < iterations + 20; iter++) {
-				model.estimateParameters(corpus);
-				for (int i = 0; i < corpus.docs.size(); i++) {
-					model.sampleOneDocument(corpus,
-							(ContextDocument) corpus.docs.get(i));
-				}
-				if (iter > iterations + 10) {
-					model.estimateParameters(corpus);
-
-					double perp = model.modelLogLikelihood(corpus);// sampleLikelihood(10,
-																	// corpus);//model.testPerplexity(10,
-																	// corpus);
-					//double perp = model.testPerplexity(10, corpus);
-					//if (perp_report > perp) {
-					//	perp_report = perp;
-					//}
-					avg_perp+=perp;
-					switch (modelType) {
-					case 0:
-						System.out.println("Link-LDA:Perp=" + perp);
-						break;
-					case 1:
-						System.out.println("Cink-LDA:Perp=" + perp);
-						break;
-					case 2:
-						System.out.println("Link-PLSA-LDA:Perp=" + perp);
-						break;
-					case 3:
-						System.out.println("Cite-PLSA-LDA:Perp=" + perp);
-						break;
-					default:
-						System.out.println("Enter number between 0-3");
-						System.exit(0);
-					
-					}
-				}
-				// link prediction
-
-			}
-
-		}
-		avg_perp/=numFolds;
-		try {
-			// Create file
-			FileWriter fstream = new FileWriter(output);
-			BufferedWriter out = new BufferedWriter(fstream);
-			out.write("Average Perplexity:" + avg_perp + "\n");
-
-			// Close the output stream
-			out.close();
-		} catch (Exception e) {// Catch exception if any
-			System.err.println("Error: " + e.getMessage());
-		}
-
-	}
-
-	public static void main(String[] args) {
-		// TODO Auto-generated method stub
-		// Read documents
-		if(args.length<6){
-			System.out.println("Not enough parameters; Please see readme file for parameter values.");
-			System.exit(0);
-		}
-		String input = args[0];
-		String output = args[1];
-
-		int windowLength = Integer.parseInt(args[2]);
-		int numtopics = Integer.parseInt(args[3]);
-		int iterations = Integer.parseInt(args[4]);
-		int modelType = Integer.parseInt(args[5]);// 0-link, 1-cite, 2-linkplsa,
-		// 3-citeplsa
-		boolean isContextAware = false;
-		if (modelType % 2 == 1) {
-			isContextAware = true;
-		}
-		int numFolds = Integer.parseInt(args[6]);
-		int K = 1;//Integer.parseInt(args[7]);
-		int isAdapt = Integer.parseInt(args[7]);
-		boolean ifAdaptive = true;
-		if(isAdapt==0){
-			ifAdaptive=false;
-		}
+		
+		for (int i = 0; i < entries.length; i++) {
+			int whichSplit = i % numFolds;
 			
-		
-		double[] citing_cited_avg = new double[windowLength];
-		for (int i = 0; i < windowLength; i++) {
-			citing_cited_avg[i] = 0;
+			if(nFolds.containsKey(whichSplit)) {
+				nFolds.get(whichSplit).add(entries[i]);
+			} else {
+				ArrayList<Integer> tempList = new ArrayList<Integer>();
+				tempList.add(entries[i]);
+				
+				nFolds.put(whichSplit, tempList);
+			}
 		}
-		Perplexity perplexity = new Perplexity();
-		System.out.print("Assigning Ids.....");
-		Corpus corpus = Corpus.assignDocumentIds(input);
-		System.out.println("Done");
-		System.out.print("Reading Data.....");
-		corpus.readData(input);
-		System.out.println("Done");
-		System.out.print("Setting Window Length.....");
-		corpus.setWindowLength(windowLength);
-		System.out.println("Done");
-		System.out.println("Size of docs=" + corpus.docs.size());
-
-		perplexity.sampleCorpus(corpus, numtopics, iterations, modelType,
-				numFolds, K, output, ifAdaptive);
-
-		System.exit(0);
 		
+		return nFolds;
+	}
+	
+	public static void sampleNumTopics(String dataDir, String modelName, String documentClassName, 
+			String modelParasFile, String ordinaryWordFile) throws ClassNotFoundException, IOException {
+		Corpus corpus = LDA.readCorpus(dataDir, modelName, documentClassName, ordinaryWordFile);
+		
+		String outputDir = dataDir + "/" + modelName + "/";
+		FileUtil.mkdir(new File(outputDir));
+		String perpFile = outputDir + modelName + ".sampleNumTopics";
+		
+		int maxNumTopics = 200, step = 10, workerNum = 0;
+		Runnable workers[] = new Runnable[maxNumTopics/step + 1];
+		for(int numTopics = 10; numTopics <= maxNumTopics; numTopics += step) {
+			System.out.println("Init worker for numTopics: " + numTopics);
+			workers[workerNum++] = new PerplexityRunner(modelName, modelParasFile, numTopics, corpus, perpFile);
+		}
+		
+		ExecutorService exec = Executors.newCachedThreadPool();
+		for(int i = 0; i < workerNum; i++) {
+			exec.execute(workers[i]);
+		}
+		
+		exec.shutdown();
+	}
+	
+	static class PerplexityRunner implements Runnable{
+		Model model = null;
+		String perpFile = null;
+		String modelParasFile = null;
+		public PerplexityRunner(String modelName, String modelParasFile, int numTopics, 
+				Corpus corpus, String perpFile) {
+			Model model = new Estimator();
+			model.setModelName(modelName);
+			model.setCorpus(corpus);
+			model.numTopics = numTopics;
+			this.modelParasFile = modelParasFile;
+			
+			this.model = model;
+			this.perpFile = perpFile;
+		}
+		
+		@Override
+		public void run() {
+			model.InitializeParameters(modelParasFile);
+			model.InitializeAssignments();
+			model.estimate();
+			
+			PrintWriter outPerp = null;
+			try {
+				outPerp = new PrintWriter(new FileWriter(perpFile, true));
+				outPerp.println(model.numTopics + "\t" + model.computePerplexity());
+			} catch (IOException e) {
+				e.printStackTrace();
+			} finally {
+				if(outPerp != null) {
+					outPerp.close();
+				}
+			}
+		}
+	}
+	
+	public static void main(String[] args) throws ClassNotFoundException, IOException {
+//		args = new String[]{System.getProperty("user.dir") + "/data/", "lda", 
+//				"Document", "sampleNumTopicsModelParameters"};
+		
+		String dataDir = args[0];
+		String modelName = args[1];
+		String documentClassName = "types." + args[2];
+		String modelParasFile = dataDir + args[3];
+		
+		String ordinaryWordFile = null;
+		if(args.length > 4) ordinaryWordFile = dataDir + args[4];
+		
+		Perplexity.sampleNumTopics(dataDir, modelName, documentClassName, modelParasFile, ordinaryWordFile);
 	}
 
 }
