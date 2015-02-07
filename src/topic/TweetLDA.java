@@ -14,7 +14,7 @@ import types.IDocument;
 import types.OrdinaryWord;
 import utils.FileUtil;
 
-public class LDA {
+public class TweetLDA {
 	enum ModelType{
 		lda, taglda, tagdeslda
 	}
@@ -55,8 +55,8 @@ public class LDA {
 		return corpus;
 	}
 	
-	public static Model run(String modelName, String modelParasFile, Corpus corpus) throws ClassNotFoundException {
-		Model model = new Estimator();
+	public static TweetModel run(String modelName, String modelParasFile, Corpus corpus) throws ClassNotFoundException {
+		TweetModel model = new TweetEstimator();
 		model.setModelName(modelName);
 		
 		model.setCorpus(corpus);
@@ -82,6 +82,7 @@ public class LDA {
 		try {
 			out = new PrintWriter(new FileWriter(outputFile));
 			
+			model.numTopics++;
 			if(model.numUniqueWords > 0) {
 				System.out.println("# Topic_word");
 				out.println("# Topic_word");
@@ -156,8 +157,8 @@ public class LDA {
 	}
 	
 	public static void main(String args[]) throws ClassNotFoundException, IOException {
-		args = new String[]{System.getProperty("user.dir") + "/data/", "lda_no_freq", 
-				"Document", "trainModelParameters", "ordinary_word"};
+		args = new String[]{System.getProperty("user.dir") + "/data/", 
+				"lda_tweet_nobackground_freq", "User", "trainModelParameters", "ordinary_word"};
 		
 		String dataDir = args[0];
 		String modelName = args[1];
@@ -167,8 +168,10 @@ public class LDA {
 		String ordinaryWordFile = null;
 		if(args.length > 4) ordinaryWordFile = dataDir + args[4];
 		
-		Corpus corpus = LDA.readCorpus(dataDir, modelName, documentClassName, ordinaryWordFile);
-		Model model = LDA.run(modelName, modelParasFile, corpus);
+		if(modelName.contains("nobackground")) TweetEstimator.hasBackGroundTopic = false;
+		
+		Corpus corpus = TweetLDA.readCorpus(dataDir, modelName, documentClassName, ordinaryWordFile);
+		TweetModel model = TweetLDA.run(modelName, modelParasFile, corpus);
 		
 		printModelResult(model, dataDir);
 		printRecResult(model, dataDir);

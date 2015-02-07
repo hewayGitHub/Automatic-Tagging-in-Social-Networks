@@ -10,6 +10,7 @@ import java.io.*;
 import topic.Estimator;
 import topic.LDA;
 import topic.Model;
+import topic.TweetEstimator;
 import types.Corpus;
 import utils.FileUtil;
 
@@ -77,7 +78,7 @@ public class Perplexity {
 		String modelParasFile = null;
 		public PerplexityRunner(String modelName, String modelParasFile, int numTopics, 
 				Corpus corpus, String perpFile) {
-			Model model = new Estimator();
+			Model model = new TweetEstimator();
 			model.setModelName(modelName);
 			model.setCorpus(corpus);
 			model.numTopics = numTopics;

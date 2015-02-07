@@ -6,11 +6,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+
 import types.Alphabet;
 import types.IDocument;
 import gnu.trove.TIntIntHashMap;
 
-public abstract class SentenceModel extends Model {
+public abstract class TweetModel extends Model {
 	private static final long serialVersionUID = 1L;
 	public double betaB;
 	public double betaBSum;
@@ -20,11 +21,24 @@ public abstract class SentenceModel extends Model {
 	public double[] rho;
 
 	public void InitializeParameters(String modelParasFile) {
-		super.InitializeParameters(modelParasFile);
-
+		if (corpus == null)
+			throw new RuntimeException(
+					"setCorpus() should be called first, since the corpus is empty now!");
+		
+		TweetModelParas.setModelPara(modelParasFile, this);
+		
+		alphaSum = 0;
+		for (int i = 0; i < numTopics; i++) {
+			alphaSum += alpha[i];
+		}
+		betaSum = beta * numUniqueWords;
+		gammaSum = gamma * numUniqueCitations;
 		betaBSum = betaB * numUniqueWords;
 		deltaSum = 2 * delta;
-
+		
+		theta = new double[numDocs][numTopics+1]; // doc topic vector
+		phi = new double[numTopics+1][numUniqueWords]; // topic-word
+		psi = new double[numTopics+1][numUniqueCitations]; // topic-citation
 		rho = new double[2];
 	}
 	
@@ -73,11 +87,14 @@ public abstract class SentenceModel extends Model {
 		out.writeDouble(gammaSum);
 		
 		out.writeDouble(betaB);
-		out.writeDouble(betaB)
+		out.writeDouble(betaBSum);
+		out.writeDouble(delta);
+		out.writeDouble(deltaSum);
 		
 		out.writeObject(theta);
 		out.writeObject(phi);
 		out.writeObject(psi);
+		out.writeObject(rho);
 
 		out.writeInt(numSamples);
 	}
@@ -105,11 +122,18 @@ public abstract class SentenceModel extends Model {
 		betaSum = in.readDouble();
 		gamma = in.readDouble();
 		gammaSum = in.readDouble();
-
+		
+		betaB = in.readDouble();
+		betaBSum = in.readDouble();
+		delta = in.readDouble();
+		deltaSum = in.readDouble();
+		
 		theta = (double[][]) in.readObject();
 		phi = (double[][]) in.readObject();
 		psi = (double[][]) in.readObject();
-
+		
+		rho = (double[]) in.readObject();
+		
 		numSamples = in.readInt();
 	}
 
@@ -126,12 +150,12 @@ public abstract class SentenceModel extends Model {
 		}
 	}
 
-	public static SentenceModel read(File f) throws Exception {
+	public static TweetModel read(File f) throws Exception {
 
-		SentenceModel topicModel = null;
+		TweetModel topicModel = null;
 
 		ObjectInputStream ois = new ObjectInputStream(new FileInputStream(f));
-		topicModel = (SentenceModel) ois.readObject();
+		topicModel = (TweetModel) ois.readObject();
 		ois.close();
 
 		return topicModel;

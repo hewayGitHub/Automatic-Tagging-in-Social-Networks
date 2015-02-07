@@ -5,11 +5,11 @@ import java.util.Arrays;
 
 import utils.FileUtil;
 
-public enum ModelParas {
+public enum TweetModelParas {
 	numTopics, alpha, beta, betaB, delta, gamma, numIterations, burninPeriod, 
 	printLogLikelihood, numTopicWord;
 	
-	public static void setModelPara(String paraFile, Model model) {
+	public static void setModelPara(String paraFile, TweetModel model) {
 		ArrayList<String> inputlines = new ArrayList<String>();
 		FileUtil.readLines(paraFile, inputlines);
 		for (int i = 0; i < inputlines.size(); i++) {
@@ -17,7 +17,7 @@ public enum ModelParas {
 			String para = inputlines.get(i).substring(0, index).trim();
 			String value = inputlines.get(i)
 					.substring(index + 1, inputlines.get(i).length()).trim();
-			switch (ModelParas.valueOf(para)) {
+			switch (TweetModelParas.valueOf(para)) {
 			case numTopics:
 				model.numTopics = Integer.parseInt(value);
 				break;
@@ -33,8 +33,14 @@ public enum ModelParas {
 			case beta:
 				model.beta = Double.parseDouble(value);
 				break;
+			case betaB:
+				model.betaB = Double.parseDouble(value);
+				break;
 			case gamma:
 				model.gamma = Double.parseDouble(value);
+				break;
+			case delta:
+				model.delta = Double.parseDouble(value);
 				break;
 			case numIterations:
 				model.numIterations = Integer.parseInt(value);
@@ -54,12 +60,14 @@ public enum ModelParas {
 		}
 	}
 
-	public static void setDefaultValue(Model model) {
+	public static void setDefaultValue(TweetModel model) {
 		model.numTopics = 100;
 		model.alpha = new double[model.numTopics];
 		Arrays.fill(model.alpha, 50.0 / model.numTopics);
 		model.beta = 0.01;
+		model.betaB = 0.01;
 		model.gamma = 0.01;
+		model.delta = 20;
 		model.numIterations = 1000;
 		model.burninPeriod = model.numIterations * 3 / 4;
 		model.printLogLikelihood = false;
